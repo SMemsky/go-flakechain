@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"encoding/hex"
 
-	"dexter/go-flakechain/net/levin"
+	"github.com/SMemsky/go-flakechain/net/levin"
 )
 
 func main() {

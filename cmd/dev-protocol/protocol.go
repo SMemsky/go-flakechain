@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"dexter/go-flakechain/net/levin"
-	"dexter/go-flakechain/storages/portable"
+	"github.com/SMemsky/go-flakechain/net/levin"
+	"github.com/SMemsky/go-flakechain/storages/portable"
 )
 
 const (

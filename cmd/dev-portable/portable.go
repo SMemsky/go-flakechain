@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"encoding/hex"
 
-	"dexter/go-flakechain/storages/portable"
+	"github.com/SMemsky/go-flakechain/storages/portable"
 )
 
 type CommandHandshakeRequest struct {
