@@ -64,7 +64,6 @@ func decodeStruct(r io.Reader, v reflect.Value) error {
 		delete(usedFields, str)
 		for j := 0; j < l; j++ {
 			if tag, ok := t.Field(j).Tag.Lookup("store"); ok && tag == str {
-				fmt.Println("Decoding", tag)
 				if err := decodeEntry(r, v.Field(j)); err != nil {
 					return err
 				}
@@ -93,7 +92,6 @@ func decodeEntry(r io.Reader, v reflect.Value) error {
 
 // TODO: indexing varint on 32-bit targets
 func decodeArray(r io.Reader, v reflect.Value, valueType uint8) error {
-	fmt.Println("Decoding array", valueType)
 	if v.Kind() != reflect.Slice {
 		return ErrBadArray
 	}
@@ -118,7 +116,6 @@ func decodeValue(r io.Reader, v reflect.Value, valueType uint8) error {
 		return decodeStruct(r, v)
 	case serializeTypeString:
 		length, err := decodeVarint(r)
-		fmt.Println("String size:", length)
 		if err != nil {
 			return err
 		}

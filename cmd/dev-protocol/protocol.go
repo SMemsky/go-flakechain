@@ -19,8 +19,10 @@ type CommandHandshakeRequest struct {
 
 type CommandHandshakeResponse struct {
 	// NOTE: Field "local_peerlist" is deprecated and not implemented.
+	Deprecated string `store:"local_peerlist"`
 	Peers	[]PeerListEntry	`store:"local_peerlist_new"`
-	Node	BasicNodeData	`store:"node_data"`	
+	Node	BasicNodeData	`store:"node_data"`
+	Payload	CoreSyncData	`store:"payload_data"`
 }
 
 type BasicNodeData struct {
@@ -51,6 +53,14 @@ type AddressType struct {
 	Type	uint8		`store:"type"` // TODO: IPv6 support
 }
 
+type CommandSupportedFlagsRequest struct {
+	// Empty struct
+}
+
+type CommandSupportedFlagsResponse struct {
+	Flags	uint32	`store:"support_flags"`
+}
+
 func main() {
 	conn, err := levin.Dial("188.35.187.49:12560")
 	if err != nil {
@@ -59,6 +69,7 @@ func main() {
 	}
 	defer conn.Close()
 
+	// Old values from one of original daemon runs (dumped via Wireshark)
 	handshake := CommandHandshakeRequest {
 		BasicNodeData {
 			1536691999,
@@ -81,6 +92,7 @@ func main() {
 	}
 	if err := conn.Invoke(commandHandshakeId, rawHandshake); err != nil {
 		fmt.Println(err)
+		return
 	}
 
 	for {
@@ -91,6 +103,33 @@ func main() {
 		}
 
 		fmt.Printf("Received packet %d of size %d\n", head.Command, len(data))
-		// fmt.Printf("%+v\n%x\n", head, data)
+		fmt.Printf("%+v\n\n", head)
+
+		if head.Command == commandHandshakeId && head.Flags == levin.FlagResponse {
+			response := &CommandHandshakeResponse{}
+			if err := portable.Unmarshal(data, response); err != nil {
+				fmt.Println(err)
+				return
+			}
+			fmt.Println("1001: Response OK")
+		}
+		if head.Command == commandSupportedFlagsId && head.Flags == levin.FlagRequest {
+			request := &CommandSupportedFlagsRequest{}
+			if err := portable.Unmarshal(data, request); err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			response := &CommandSupportedFlagsResponse{0}
+			rawResponse, err := portable.Marshal(response)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			if err := conn.Respond(commandSupportedFlagsId, rawResponse); err != nil {
+				fmt.Println(err)
+				return
+			}
+		}
 	}
 }

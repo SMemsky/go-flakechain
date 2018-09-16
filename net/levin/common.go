@@ -6,6 +6,11 @@ import (
 )
 
 const (
+	FlagRequest = 1
+	FlagResponse = 2
+)
+
+const (
 	// Appears at the beggining of every levin packet
 	levinSignature = 0x0101010101012101
 

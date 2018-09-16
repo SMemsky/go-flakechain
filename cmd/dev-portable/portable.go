@@ -30,7 +30,7 @@ type CommandHandshakeResponse struct {
 	// NOTE: Field "local_peerlist" is deprecated and not implemented.
 	Deprecated string `store:"local_peerlist"`
 	Peers	[]PeerListEntry	`store:"local_peerlist_new"`
-	Node	BasicNodeData	`store:"node_data"`	
+	Node	BasicNodeData	`store:"node_data"`
 	Payload	CoreSyncData	`store:"payload_data"`
 }
 type PeerListEntry struct {

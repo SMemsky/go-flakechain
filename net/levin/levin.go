@@ -39,7 +39,8 @@ func (c *Client) Respond(command uint32, packet []byte) error {
 func (c *Client) Receive() ([]byte, *bucketHead, error) {
 	head := bucketHead{}
 
-	c.conn.SetReadDeadline(time.Now().Add(readTimeout))
+	// TODO: Deadlines
+	// c.conn.SetReadDeadline(time.Now().Add(readTimeout))
 
 	// Read response
 	buffer := make([]byte, bucketSize)
