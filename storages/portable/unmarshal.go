@@ -84,8 +84,8 @@ func decodeEntry(r io.Reader, v reflect.Value) error {
 	if err := binary.Read(r, binary.LittleEndian, &valueType); err != nil {
 		return err
 	}
-	if valueType & serializeArrayMask != 0 {
-		return decodeArray(r, v, valueType &^ serializeArrayMask)
+	if valueType&serializeArrayMask != 0 {
+		return decodeArray(r, v, valueType&^serializeArrayMask)
 	}
 	return decodeValue(r, v, valueType)
 }

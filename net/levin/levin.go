@@ -71,7 +71,7 @@ func (c *Client) Receive() ([]byte, *bucketHead, error) {
 }
 
 func (c *Client) sendCommand(command uint32, packet []byte, needsReturn bool, flags uint32) error {
-	head := bucketHead {
+	head := bucketHead{
 		levinSignature,
 		uint64(len(packet)),
 		needsReturn, command,

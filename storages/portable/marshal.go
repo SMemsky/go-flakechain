@@ -140,13 +140,13 @@ func encodeValue(w io.Writer, v reflect.Value) error {
 
 func encodeVarint(w io.Writer, value uint64) error {
 	if value <= 0x3f {
-		return binary.Write(w, binary.LittleEndian, uint8(value << 2) | uint8(portableVarint8))
+		return binary.Write(w, binary.LittleEndian, uint8(value<<2)|uint8(portableVarint8))
 	} else if value <= 0x3fff {
-		return binary.Write(w, binary.LittleEndian, uint16(value << 2) | uint16(portableVarint16))
+		return binary.Write(w, binary.LittleEndian, uint16(value<<2)|uint16(portableVarint16))
 	} else if value <= 0x3fffffff {
-		return binary.Write(w, binary.LittleEndian, uint32(value << 2) | uint32(portableVarint32))
+		return binary.Write(w, binary.LittleEndian, uint32(value<<2)|uint32(portableVarint32))
 	} else if value <= 0x3fffffffffffffff {
-		return binary.Write(w, binary.LittleEndian, uint64(value << 2) | uint64(portableVarint64))
+		return binary.Write(w, binary.LittleEndian, uint64(value<<2)|uint64(portableVarint64))
 	}
 
 	return ErrBadVarint
