@@ -14,5 +14,5 @@ func main() {
     }
     defer foo.Stop()
 
-    time.Sleep(2 * time.Second)
+    time.Sleep(0 * time.Second)
 }

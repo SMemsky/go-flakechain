@@ -24,6 +24,15 @@ const (
     invokeTimeout = 2 * time.Minute
 )
 
+var (
+    // TODO: Minimum of 12 DNS-resolvable nodes?
+    trustedSeedNodes = [...]string {
+        "188.35.187.49:12560",
+        "188.35.187.51:12560",
+        "54.244.21.125:12560",
+    }
+)
+
 type Node struct {
     // TODO: levin listener
     Ins []levin.Conn
@@ -37,6 +46,8 @@ func StartNode(port uint16) (*Node, error) {
         Ins: make([]levin.Conn, 0, maxInConnections),
         Outs: make([]levin.Conn, 0, maxOutConnections),
     }
+
+    // go 
 
     return n, nil
 }
