@@ -1,3 +1,4 @@
+// This package implements basic Levin network functionality
 package levin
 
 import (
@@ -8,35 +9,45 @@ import (
 	"time"
 )
 
-type Conn struct {
+type Conn interface {
+	Close()
+
+	Notify(command uint32, packet []byte) error
+	Invoke(command uint32, packet []byte) error
+	Respond(command uint32, packet []byte) error
+
+	Receive() ([]byte, *bucketHead, error)
+}
+
+type conn struct {
 	conn net.Conn
 }
 
-func Dial(address string) (*Conn, error) {
-	conn, err := net.Dial("tcp", address)
+func Dial(address string) (*conn, error) {
+	c, err := net.Dial("tcp", address)
 	if err != nil {
 		return nil, err
 	}
-	return &Conn{conn}, nil
+	return &conn{c}, nil
 }
 
-func (c *Conn) Close() {
+func (c *conn) Close() {
 	c.conn.Close()
 }
 
-func (c *Conn) Notify(command uint32, packet []byte) error {
+func (c *conn) Notify(command uint32, packet []byte) error {
 	return c.sendCommand(command, packet, false, 1)
 }
 
-func (c *Conn) Invoke(command uint32, packet []byte) error {
+func (c *conn) Invoke(command uint32, packet []byte) error {
 	return c.sendCommand(command, packet, true, 1)
 }
 
-func (c *Conn) Respond(command uint32, packet []byte) error {
+func (c *conn) Respond(command uint32, packet []byte) error {
 	return c.sendCommand(command, packet, false, 2)
 }
 
-func (c *Conn) Receive() ([]byte, *bucketHead, error) {
+func (c *conn) Receive() ([]byte, *bucketHead, error) {
 	head := bucketHead{}
 
 	// TODO: Deadlines
@@ -70,7 +81,7 @@ func (c *Conn) Receive() ([]byte, *bucketHead, error) {
 	return response, &head, nil
 }
 
-func (c *Conn) sendCommand(command uint32, packet []byte, needsReturn bool, flags uint32) error {
+func (c *conn) sendCommand(command uint32, packet []byte, needsReturn bool, flags uint32) error {
 	head := bucketHead{
 		levinSignature,
 		uint64(len(packet)),
