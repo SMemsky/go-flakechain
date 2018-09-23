@@ -8,35 +8,35 @@ import (
 	"time"
 )
 
-type Client struct {
+type Conn struct {
 	conn net.Conn
 }
 
-func Dial(address string) (*Client, error) {
+func Dial(address string) (*Conn, error) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{conn}, nil
+	return &Conn{conn}, nil
 }
 
-func (c *Client) Close() {
+func (c *Conn) Close() {
 	c.conn.Close()
 }
 
-func (c *Client) Notify(command uint32, packet []byte) error {
+func (c *Conn) Notify(command uint32, packet []byte) error {
 	return c.sendCommand(command, packet, false, 1)
 }
 
-func (c *Client) Invoke(command uint32, packet []byte) error {
+func (c *Conn) Invoke(command uint32, packet []byte) error {
 	return c.sendCommand(command, packet, true, 1)
 }
 
-func (c *Client) Respond(command uint32, packet []byte) error {
+func (c *Conn) Respond(command uint32, packet []byte) error {
 	return c.sendCommand(command, packet, false, 2)
 }
 
-func (c *Client) Receive() ([]byte, *bucketHead, error) {
+func (c *Conn) Receive() ([]byte, *bucketHead, error) {
 	head := bucketHead{}
 
 	// TODO: Deadlines
@@ -70,7 +70,7 @@ func (c *Client) Receive() ([]byte, *bucketHead, error) {
 	return response, &head, nil
 }
 
-func (c *Client) sendCommand(command uint32, packet []byte, needsReturn bool, flags uint32) error {
+func (c *Conn) sendCommand(command uint32, packet []byte, needsReturn bool, flags uint32) error {
 	head := bucketHead{
 		levinSignature,
 		uint64(len(packet)),
