@@ -2,6 +2,8 @@
 package p2p
 
 import (
+    "log"
+    "sync"
     "time"
 
     "github.com/SMemsky/go-flakechain/net/levin"
@@ -22,6 +24,8 @@ const (
     connectionTimeout = 5 * time.Second
     pingConnectionTimeout = 2 * time.Second
     invokeTimeout = 2 * time.Minute
+
+    testInterval = 1 * time.Second
 )
 
 var (
@@ -37,6 +41,9 @@ type Node struct {
     // TODO: levin listener
     Ins []levin.Conn
     Outs []levin.Conn
+
+    stopIdleRoutine chan struct{}
+    wg sync.WaitGroup
 }
 
 // Start runs a node on given port and starts.
@@ -45,12 +52,33 @@ func StartNode(port uint16) (*Node, error) {
     n := &Node{
         Ins: make([]levin.Conn, 0, maxInConnections),
         Outs: make([]levin.Conn, 0, maxOutConnections),
+        stopIdleRoutine: make(chan struct{}),
     }
 
-    // go 
+    n.wg.Add(1)
+    go n.idleRoutine()
 
     return n, nil
 }
 
+// Stop() will block until all open nodes are gracefully closed
 func (n *Node) Stop() {
+    close(n.stopIdleRoutine)
+    n.wg.Wait()
+}
+
+func (n *Node) idleRoutine() {
+    defer n.wg.Done()
+
+    ticker1 := time.NewTicker(testInterval)
+    defer ticker1.Stop()
+
+    for {
+        select {
+        case <-ticker1.C:
+            log.Println("ticker1")
+        case <-n.stopIdleRoutine:
+            return
+        }
+    }
 }
