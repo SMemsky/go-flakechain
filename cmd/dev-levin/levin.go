@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/SMemsky/go-flakechain/net/levin"
 )
