@@ -12,6 +12,8 @@ const (
 )
 
 func main() {
+	defer log.Println("Ok, here comes da end")
+
 	foo, err := p2p.StartNode(p2pNodeIncomingPort)
 	if err != nil {
 		log.Println(err)

@@ -2,7 +2,9 @@
 package p2p
 
 import (
+	"crypto/rand"
 	"log"
+	"math/big"
 	"sync"
 	"time"
 
@@ -23,6 +25,7 @@ const (
 
 	anchorConnectionsCount      = 2
 	whitelistConnectionsPercent = 70
+	expectedWhiteConnections    = maxOutConnections * whitelistConnectionsPercent / 100
 
 	handshakeTimeout      = 5 * time.Second
 	connectionTimeout     = 5 * time.Second
@@ -31,7 +34,14 @@ const (
 
 	idlePeerKickTime    = 10 * time.Minute
 	passivePeerKickTime = 1 * time.Minute
-	testInterval        = 1 * time.Second
+)
+
+type peerType uint8
+
+const (
+	anchorPeer peerType = iota
+	whitePeer
+	grayPeer
 )
 
 var (
@@ -47,6 +57,10 @@ type Node struct {
 	// TODO: levin listener
 	Ins  []levin.Conn
 	Outs []levin.Conn
+
+	whitePeerlist  []PeerListEntry
+	grayPeerlist   []PeerListEntry
+	anchorPeerlist []AnchorPeerListEntry
 
 	stopIdleRoutine chan struct{}
 	wg              sync.WaitGroup
@@ -76,15 +90,63 @@ func (n *Node) Stop() {
 func (n *Node) idleRoutine() {
 	defer n.wg.Done()
 
-	ticker1 := time.NewTicker(testInterval)
-	defer ticker1.Stop()
+	connMakerTicker := time.NewTicker(connMakerInterval)
+	defer connMakerTicker.Stop()
 
 	for {
 		select {
-		case <-ticker1.C:
-			log.Println("ticker1")
+		case <-connMakerTicker.C:
+			n.makeConnections()
 		case <-n.stopIdleRoutine:
 			return
 		}
 	}
+}
+
+func (n *Node) makeConnections() {
+	log.Println("makeConnections")
+
+	oldConnCount := len(n.Outs)
+
+	if len(n.whitePeerlist) == 0 && len(trustedSeedNodes) != 0 {
+		n.connectToSeed()
+	}
+
+	if len(n.Outs) < maxOutConnections {
+		if len(n.Outs) < expectedWhiteConnections {
+			n.makeExpectedConnections(anchorPeer, anchorConnectionsCount)
+			n.makeExpectedConnections(whitePeer, expectedWhiteConnections)
+			n.makeExpectedConnections(grayPeer, maxOutConnections)
+		} else {
+			n.makeExpectedConnections(grayPeer, maxOutConnections)
+			n.makeExpectedConnections(whitePeer, maxOutConnections)
+		}
+	}
+
+	if len(n.Outs) == oldConnCount && oldConnCount < maxOutConnections {
+		n.connectToSeed()
+	}
+}
+
+func (n *Node) connectToSeed() {
+	if len(trustedSeedNodes) == 0 {
+		return
+	}
+
+	log.Println("Choosing a seed to connect to")
+
+	index, err := rand.Int(rand.Reader, big.NewInt(int64(len(trustedSeedNodes))))
+	if err != nil {
+		log.Println("connectToSeed:", err)
+		return
+	}
+	n.connectAndHandshakeWithPeer(trustedSeedNodes[index.Int64()], true)
+}
+
+func (n *Node) makeExpectedConnections(kind peerType, count uint) {
+	log.Println("Trying to meet requirement", count, "for", kind)
+}
+
+func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakeThePeers bool) {
+	log.Println("Attempting to connect to", address)
 }

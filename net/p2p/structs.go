@@ -20,6 +20,12 @@ type PeerListEntry struct {
 	LastSeen int64       `store:"last_seen"`
 }
 
+type AnchorPeerListEntry struct {
+	Address   AddressType `store:"adr"`
+	Id        uint64      `store:"id"`
+	FirstSeen int64       `store:"first_seen"`
+}
+
 // Currently Type is always 1. We should add support for IPv6 someday..
 type AddressType struct {
 	Address struct {
