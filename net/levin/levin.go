@@ -17,10 +17,14 @@ type Conn interface {
 	Respond(command uint32, packet []byte) error
 
 	Receive() ([]byte, *bucketHead, error)
+
+	// Returns a custom, user-defined context
+	Context() *interface{}
 }
 
 type conn struct {
-	conn net.Conn
+	conn    net.Conn
+	context interface{}
 }
 
 func Dial(address string) (*conn, error) {
@@ -28,11 +32,15 @@ func Dial(address string) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &conn{c}, nil
+	return &conn{c, struct{}{}}, nil
 }
 
 func (c *conn) Close() {
 	c.conn.Close()
+}
+
+func (c *conn) Context() *interface{} {
+	return &c.context
 }
 
 func (c *conn) Notify(command uint32, packet []byte) error {
