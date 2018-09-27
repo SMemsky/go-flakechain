@@ -4,9 +4,9 @@ package p2p
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"fmt"
 	"log"
 	"math/big"
-	"net"
 	"sync"
 	"time"
 
@@ -53,7 +53,8 @@ var (
 	trustedSeedNodes = [...]string{
 		// "188.35.187.49:12560",
 		// "188.35.187.51:12560",
-		"54.244.21.125:12560",
+		// "54.244.21.125:12560",
+		"107.145.219.18:22560",
 	}
 )
 
@@ -62,9 +63,9 @@ type Node struct {
 	Ins  map[string]levin.Conn
 	Outs map[string]levin.Conn
 
-	whitePeerlist  []PeerListEntry
-	grayPeerlist   []PeerListEntry
-	anchorPeerlist []AnchorPeerListEntry
+	whitePeerlist  map[string]PeerListEntry
+	grayPeerlist   map[string]PeerListEntry
+	anchorPeerlist map[string]AnchorPeerListEntry
 
 	port   uint16
 	peerId uint64
@@ -79,6 +80,10 @@ func StartNode(port uint16) (*Node, error) {
 	n := &Node{
 		Ins:  make(map[string]levin.Conn),
 		Outs: make(map[string]levin.Conn),
+
+		whitePeerlist:  make(map[string]PeerListEntry),
+		grayPeerlist:   make(map[string]PeerListEntry),
+		anchorPeerlist: make(map[string]AnchorPeerListEntry),
 
 		port:   port,
 		peerId: 0,
@@ -205,11 +210,15 @@ func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakePeerList bool
 	log.Println(address, "answered with", len(response.Peers), "gray peers")
 	log.Println(address, "has height", response.SyncData.CurrentHeight, "and difficulty", response.SyncData.CumulativeDifficulty)
 
-	for i := 0; i < len(response.Peers); i++ {
-		ip := response.Peers[i].Address.Address.Ip
-		foo := net.IPv4(byte(ip>>24), byte(ip>>16), byte(ip>>8), byte(ip))
-		log.Println(foo.String())
-	}
+	// for i := 0; i < len(response.Peers); i++ {
+	// 	ip := response.Peers[i].Address.Address.Ip
+	// 	foo := net.IPv4(byte(ip>>24), byte(ip>>16), byte(ip>>8), byte(ip))
+	// 	log.Println(foo.String())
+	// 	log.Println(response.Peers[i].Address.String())
+	// }
+
+	n.addNewPeers(response.Peers, int64(response.NodeData.LocalTime))
+	log.Println("Gray size:", len(n.grayPeerlist))
 }
 
 func (n *Node) handshakeWithPeer(peer levin.Conn) (*HandshakeResponse, error) {
@@ -262,6 +271,47 @@ func (n *Node) dropOutConnection(address string) {
 
 	conn.Close()
 	delete(n.Outs, address)
+}
+
+func fixTimeDelta(peers []PeerListEntry, localTime int64) (int64, error) {
+	now := time.Now().Unix()
+	delta := now - localTime
+
+	for i := 0; i < len(peers); i++ {
+		if peers[i].LastSeen > localTime {
+			return 0, fmt.Errorf("Peerlist entry from future: local:%d, peer:%d", localTime, peers[i].LastSeen)
+		}
+		peers[i].LastSeen += delta
+	}
+	return delta, nil
+}
+
+func (n *Node) addNewPeers(peers []PeerListEntry, localTime int64) {
+	newPeers := make([]PeerListEntry, len(peers))
+	copy(newPeers, peers)
+	delta, err := fixTimeDelta(newPeers, localTime)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Println("Peer Delta =", delta)
+
+	n.addGrayPeers(newPeers)
+}
+
+func (n *Node) addGrayPeers(peers []PeerListEntry) {
+	for i := 0; i < len(peers); i++ {
+		str := peers[i].Address.IpString()
+		if _, present := n.whitePeerlist[str]; present {
+			log.Println("Skipping white", str)
+			continue
+		}
+		if _, present := n.grayPeerlist[str]; present {
+			log.Println("Skipping gray", str)
+			continue
+		}
+		n.grayPeerlist[str] = peers[i]
+	}
 }
 
 func (n *Node) gatherNodeData() BasicNodeData {

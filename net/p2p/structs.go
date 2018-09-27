@@ -1,5 +1,10 @@
 package p2p
 
+import (
+	"net"
+	"strconv"
+)
+
 type BasicNodeData struct {
 	LocalTime uint64 `store:"local_time"`
 	MyPort    uint32 `store:"my_port"`
@@ -33,4 +38,15 @@ type AddressType struct {
 		Port uint16 `store:"m_port"`
 	} `store:"addr"`
 	Type uint8 `store:"type"` // TODO: IPv6 support
+}
+
+func (a *AddressType) String() string {
+	data := a.Address.Ip
+	ip4 := net.IPv4(byte(data>>24), byte(data>>16), byte(data>>8), byte(data))
+	return ip4.String() + ":" + strconv.Itoa(int(a.Address.Port))
+}
+
+func (a *AddressType) IpString() string {
+	data := a.Address.Ip
+	return net.IPv4(byte(data>>24), byte(data>>16), byte(data>>8), byte(data)).String()
 }
