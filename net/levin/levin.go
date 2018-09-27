@@ -67,13 +67,13 @@ func Dial(address string) (*conn, error) {
 }
 
 func (c *conn) Close() {
-	close(c.stopReceiveRoutine)
-	c.wg.Wait()
-
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
 	}
+
+	close(c.stopReceiveRoutine)
+	c.wg.Wait()
 }
 
 func (c *conn) Context() *interface{} {
@@ -95,18 +95,18 @@ func (c *conn) Invoke(commandId uint32, request interface{}, response interface{
 	select {
 	case <-time.After(timeout):
 		return -1, ErrTimedOut
-	case response, ok := <-responseChan:
+	case r, ok := <-responseChan:
 		if !ok {
 			return -1, fmt.Errorf("Connection closed")
 		}
-		if response.head.Command != commandId {
+		if r.head.Command != commandId {
 			log.Panicln("fixme: please contact devs. This should never happen, lol")
 		}
 
-		if err := portable.Unmarshal(response.data, response); err != nil {
+		if err := portable.Unmarshal(r.data, response); err != nil {
 			return -1, err
 		}
-		return response.head.ReturnCode, nil
+		return r.head.ReturnCode, nil
 	}
 }
 
@@ -161,9 +161,9 @@ receiveLoop:
 			responseMap[head.Command] <- invokeResponse{head, data}
 			close(responseMap[head.Command])
 			delete(responseMap, head.Command)
-			log.Println("Sent packet", head.Command, "for handling :)")
+			// log.Println("Sent packet", head.Command, "for handling :)")
 		} else {
-			log.Println("Received packet", head.Command, "but did not handle :)")
+			// log.Println("Received packet", head.Command, "but did not handle :)")
 		}
 	}
 

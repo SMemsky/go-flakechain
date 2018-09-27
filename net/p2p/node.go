@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"log"
 	"math/big"
+	"net"
 	"sync"
 	"time"
 
@@ -50,8 +51,8 @@ const (
 var (
 	// TODO: Minimum of 12 DNS-resolvable nodes?
 	trustedSeedNodes = [...]string{
-		"188.35.187.49:12560",
-		"188.35.187.51:12560",
+		// "188.35.187.49:12560",
+		// "188.35.187.51:12560",
 		"54.244.21.125:12560",
 	}
 )
@@ -191,7 +192,24 @@ func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakePeerList bool
 		defer n.dropOutConnection(address)
 	}
 
-	n.handshakeWithPeer(out)
+	response, err := n.handshakeWithPeer(out)
+	if err != nil {
+		if !onlyTakePeerList {
+			defer n.dropOutConnection(address)
+		}
+		log.Printf("Failed with error: %s\n", err)
+		return
+	}
+
+	// log.Printf("%+v\n", response)
+	log.Println(address, "answered with", len(response.Peers), "gray peers")
+	log.Println(address, "has height", response.SyncData.CurrentHeight, "and difficulty", response.SyncData.CumulativeDifficulty)
+
+	for i := 0; i < len(response.Peers); i++ {
+		ip := response.Peers[i].Address.Address.Ip
+		foo := net.IPv4(byte(ip>>24), byte(ip>>16), byte(ip>>8), byte(ip))
+		log.Println(foo.String())
+	}
 }
 
 func (n *Node) handshakeWithPeer(peer levin.Conn) (*HandshakeResponse, error) {
