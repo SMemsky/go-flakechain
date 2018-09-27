@@ -6,11 +6,6 @@ import (
 )
 
 const (
-	FlagRequest  = 1
-	FlagResponse = 2
-)
-
-const (
 	// Appears at the beggining of every levin packet
 	levinSignature = 0x0101010101012101
 
@@ -22,12 +17,17 @@ const (
 
 	writeTimeout = 10 * time.Second
 	readTimeout  = 10 * time.Second
+
+	flagRequest  = 1
+	flagResponse = 2
 )
 
 var (
 	ErrBadSign   = errors.New("net/levin: invalid bucket signature")
 	ErrBigPacket = errors.New("net/levin: received packet is too huge")
 	ErrVersion   = errors.New("net/levin: packet is of unknown version")
+
+	ErrTimedOut = errors.New("net/levin: operation has timed out")
 )
 
 type bucketHead struct {

@@ -21,6 +21,6 @@ func main() {
 	defer foo.Stop()
 
 	log.Println("Running!")
-	time.Sleep(10 * time.Second)
+	time.Sleep(30 * time.Second)
 	log.Println("Ok, gotta stop!")
 }

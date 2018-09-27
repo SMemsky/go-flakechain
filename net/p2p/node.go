@@ -3,6 +3,7 @@ package p2p
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"log"
 	"math/big"
 	"sync"
@@ -16,7 +17,7 @@ const (
 	maxOutConnections = 8
 
 	handshakeInterval                = 60 * time.Second
-	connMakerInterval                = 1 * time.Second
+	connMakerInterval                = 5 * time.Second
 	peerlistStoreInterval            = 30 * time.Minute
 	grayPeerlistHousekeepingInterval = 1 * time.Minute
 	incomingConnectionsInterval      = 15 * time.Minute
@@ -34,6 +35,8 @@ const (
 
 	idlePeerKickTime    = 10 * time.Minute
 	passivePeerKickTime = 1 * time.Minute
+
+	networkId = "rnowflakenetwork"
 )
 
 type peerType uint8
@@ -62,6 +65,9 @@ type Node struct {
 	grayPeerlist   []PeerListEntry
 	anchorPeerlist []AnchorPeerListEntry
 
+	port   uint16
+	peerId uint64
+
 	stopIdleRoutine chan struct{}
 	wg              sync.WaitGroup
 }
@@ -70,10 +76,16 @@ type Node struct {
 // It also runs P2P maintenance routines which should be stopped with Stop
 func StartNode(port uint16) (*Node, error) {
 	n := &Node{
-		Ins:             make(map[string]levin.Conn),
-		Outs:            make(map[string]levin.Conn),
+		Ins:  make(map[string]levin.Conn),
+		Outs: make(map[string]levin.Conn),
+
+		port:   port,
+		peerId: 0,
+
 		stopIdleRoutine: make(chan struct{}),
 	}
+	binary.Read(rand.Reader, binary.LittleEndian, &n.peerId)
+	log.Printf("Choosen PeerID: %x\n", n.peerId)
 
 	n.wg.Add(1)
 	go n.idleRoutine()
@@ -178,6 +190,20 @@ func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakePeerList bool
 	if onlyTakePeerList {
 		defer n.dropOutConnection(address)
 	}
+
+	n.handshakeWithPeer(out)
+}
+
+func (n *Node) handshakeWithPeer(peer levin.Conn) (*HandshakeResponse, error) {
+	response := &HandshakeResponse{}
+	_, err := peer.Invoke(
+		commandHandshakeId,
+		&HandshakeRequest{
+			NodeData: n.gatherNodeData(),
+			SyncData: n.gatherCoreSyncData()},
+		response,
+		invokeTimeout)
+	return response, err
 }
 
 // Drop n randomly picked connections
@@ -218,4 +244,18 @@ func (n *Node) dropOutConnection(address string) {
 
 	conn.Close()
 	delete(n.Outs, address)
+}
+
+func (n *Node) gatherNodeData() BasicNodeData {
+	localTime := uint64(0)
+	return BasicNodeData{
+		LocalTime: localTime,
+		MyPort:    uint32(n.port),
+		NetworkId: networkId,
+		PeerId:    n.peerId,
+	}
+}
+
+func (n *Node) gatherCoreSyncData() CoreSyncData {
+	return CoreSyncData{0, 0, "", 0}
 }

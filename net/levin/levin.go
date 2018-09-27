@@ -4,19 +4,24 @@ package levin
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"log"
 	"net"
+	"sync"
 	"time"
+
+	"github.com/SMemsky/go-flakechain/storages/portable"
 )
 
 type Conn interface {
 	Close()
 
-	Notify(command uint32, packet []byte) error
-	Invoke(command uint32, packet []byte) error
-	Respond(command uint32, packet []byte) error
+	// Notify(command uint32, packet []byte) error
+	Invoke(commandId uint32, request interface{}, response interface{}, timeout time.Duration) (int32, error)
+	// Respond(command uint32, packet []byte) error
 
-	Receive() ([]byte, *bucketHead, error)
+	// Receive() ([]byte, *bucketHead, error)
 
 	// Returns a custom, user-defined context
 	Context() *interface{}
@@ -25,6 +30,21 @@ type Conn interface {
 type conn struct {
 	conn    net.Conn
 	context interface{}
+
+	newMappings chan packetMapping
+
+	stopReceiveRoutine chan struct{}
+	wg                 sync.WaitGroup
+}
+
+type invokeResponse struct {
+	head bucketHead
+	data []byte
+}
+
+type packetMapping struct {
+	id           uint32
+	responseChan chan invokeResponse
 }
 
 func Dial(address string) (*conn, error) {
@@ -32,61 +52,135 @@ func Dial(address string) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &conn{c, struct{}{}}, nil
+	node := &conn{
+		conn:    c,
+		context: struct{}{},
+
+		newMappings: make(chan packetMapping),
+
+		stopReceiveRoutine: make(chan struct{}),
+	}
+
+	node.wg.Add(1)
+	go node.receiveRoutine()
+	return node, nil
 }
 
 func (c *conn) Close() {
-	c.conn.Close()
+	close(c.stopReceiveRoutine)
+	c.wg.Wait()
+
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
 }
 
 func (c *conn) Context() *interface{} {
 	return &c.context
 }
 
-func (c *conn) Notify(command uint32, packet []byte) error {
-	return c.sendCommand(command, packet, false, 1)
+func (c *conn) Invoke(commandId uint32, request interface{}, response interface{}, timeout time.Duration) (int32, error) {
+	packet, err := portable.Marshal(request)
+	if err != nil {
+		return -1, err
+	}
+	if err = c.sendCommand(commandId, packet, true, flagRequest); err != nil {
+		return -1, err
+	}
+
+	responseChan := make(chan invokeResponse, 1)
+	c.newMappings <- packetMapping{commandId, responseChan}
+
+	select {
+	case <-time.After(timeout):
+		return -1, ErrTimedOut
+	case response, ok := <-responseChan:
+		if !ok {
+			return -1, fmt.Errorf("Connection closed")
+		}
+		if response.head.Command != commandId {
+			log.Panicln("fixme: please contact devs. This should never happen, lol")
+		}
+
+		if err := portable.Unmarshal(response.data, response); err != nil {
+			return -1, err
+		}
+		return response.head.ReturnCode, nil
+	}
 }
 
-func (c *conn) Invoke(command uint32, packet []byte) error {
-	return c.sendCommand(command, packet, true, 1)
-}
+// Receives new packets and directs those where needed. Also listens to
+// newMappings channel
+func (c *conn) receiveRoutine() {
+	defer c.wg.Done()
 
-func (c *conn) Respond(command uint32, packet []byte) error {
-	return c.sendCommand(command, packet, false, 2)
-}
-
-func (c *conn) Receive() ([]byte, *bucketHead, error) {
 	head := bucketHead{}
+	bucketBuffer := make([]byte, bucketSize)
 
-	// TODO: Deadlines
-	// c.conn.SetReadDeadline(time.Now().Add(readTimeout))
+	responseMap := make(map[uint32](chan invokeResponse))
 
-	// Read response
-	buffer := make([]byte, bucketSize)
-	if _, err := io.ReadFull(c.conn, buffer); err != nil {
-		return nil, nil, err
-	}
-	if err := binary.Read(bytes.NewBuffer(buffer), binary.LittleEndian, &head); err != nil {
-		return nil, nil, err
+receiveLoop:
+	for {
+		select {
+		case <-c.stopReceiveRoutine:
+			break receiveLoop
+		case mapping := <-c.newMappings:
+			if _, present := responseMap[mapping.id]; present {
+				close(mapping.responseChan)
+				break receiveLoop
+			}
+			responseMap[mapping.id] = mapping.responseChan
+		default:
+		}
+
+		if _, err := io.ReadFull(c.conn, bucketBuffer); err != nil {
+			break receiveLoop
+		}
+		if err := binary.Read(bytes.NewBuffer(bucketBuffer), binary.LittleEndian, &head); err != nil {
+			break receiveLoop
+		}
+
+		// // Check response
+		if head.Signature != levinSignature {
+			break receiveLoop
+		}
+		if head.ProtocolVersion != currentVersion {
+			break receiveLoop
+		}
+		if head.PacketSize > maxPacketSize {
+			break receiveLoop
+		}
+
+		data := make([]byte, head.PacketSize)
+		if _, err := io.ReadFull(c.conn, data); err != nil {
+			break receiveLoop
+		}
+
+		if _, present := responseMap[head.Command]; present && head.Flags == flagResponse {
+			responseMap[head.Command] <- invokeResponse{head, data}
+			close(responseMap[head.Command])
+			delete(responseMap, head.Command)
+			log.Println("Sent packet", head.Command, "for handling :)")
+		} else {
+			log.Println("Received packet", head.Command, "but did not handle :)")
+		}
 	}
 
-	// // Check response
-	if head.Signature != levinSignature {
-		return nil, nil, ErrBadSign
+	// Loop ended, close all invoked sockets
+	for _, c := range responseMap {
+		close(c)
 	}
-	if head.ProtocolVersion != currentVersion {
-		return nil, nil, ErrVersion
+	// Make SURE there are no new mappings
+	done := false
+	for !done {
+		select {
+		case mapping := <-c.newMappings:
+			close(mapping.responseChan)
+		default:
+			done = true
+		}
 	}
-	if head.PacketSize > maxPacketSize {
-		return nil, nil, ErrBigPacket
-	}
-
-	response := make([]byte, head.PacketSize)
-	if _, err := io.ReadFull(c.conn, response); err != nil {
-		return nil, nil, err
-	}
-
-	return response, &head, nil
 }
 
 func (c *conn) sendCommand(command uint32, packet []byte, needsReturn bool, flags uint32) error {
@@ -97,7 +191,7 @@ func (c *conn) sendCommand(command uint32, packet []byte, needsReturn bool, flag
 		0, flags, 1,
 	}
 
-	c.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	// c.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 
 	// Write packet header and data
 	if err := binary.Write(c.conn, binary.LittleEndian, head); err != nil {

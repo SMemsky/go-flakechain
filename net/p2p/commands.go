@@ -1,5 +1,10 @@
 package p2p
 
+const (
+	commandHandshakeId      = 1001
+	commandSupportedFlagsId = 1007
+)
+
 type HandshakeRequest struct {
 	NodeData BasicNodeData `store:"node_data"`
 	SyncData CoreSyncData  `store:"payload_data"`
