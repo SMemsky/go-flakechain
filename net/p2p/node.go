@@ -55,8 +55,8 @@ var (
 
 type Node struct {
 	// TODO: levin listener
-	Ins  []levin.Conn
-	Outs []levin.Conn
+	Ins  map[string]levin.Conn
+	Outs map[string]levin.Conn
 
 	whitePeerlist  []PeerListEntry
 	grayPeerlist   []PeerListEntry
@@ -70,8 +70,8 @@ type Node struct {
 // It also runs P2P maintenance routines which should be stopped with Stop
 func StartNode(port uint16) (*Node, error) {
 	n := &Node{
-		Ins:             make([]levin.Conn, 0, maxInConnections),
-		Outs:            make([]levin.Conn, 0, maxOutConnections),
+		Ins:             make(map[string]levin.Conn),
+		Outs:            make(map[string]levin.Conn),
 		stopIdleRoutine: make(chan struct{}),
 	}
 
@@ -85,6 +85,13 @@ func StartNode(port uint16) (*Node, error) {
 func (n *Node) Stop() {
 	close(n.stopIdleRoutine)
 	n.wg.Wait()
+
+	for _, conn := range n.Outs {
+		conn.Close()
+	}
+	for _, conn := range n.Ins {
+		conn.Close()
+	}
 }
 
 func (n *Node) idleRoutine() {
@@ -128,6 +135,7 @@ func (n *Node) makeConnections() {
 	}
 }
 
+// Chose a random trusted seed and try to take its peerlist
 func (n *Node) connectToSeed() {
 	if len(trustedSeedNodes) == 0 {
 		return
@@ -147,6 +155,67 @@ func (n *Node) makeExpectedConnections(kind peerType, count uint) {
 	log.Println("Trying to meet requirement", count, "for", kind)
 }
 
-func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakeThePeers bool) {
+func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakePeerList bool) {
+	if len(n.Outs) == maxOutConnections {
+		return
+	} else if len(n.Outs) > maxOutConnections {
+		n.dropOutConnections(1)
+		return
+	}
+	if _, present := n.Outs[address]; present {
+		// prevent duplicate connection to the same node
+		return
+	}
+
 	log.Println("Attempting to connect to", address)
+
+	out, err := levin.Dial(address)
+	if err != nil {
+		log.Println("Unable to connect:", address, err)
+		return
+	}
+	n.Outs[address] = out
+	if onlyTakePeerList {
+		defer n.dropOutConnection(address)
+	}
+}
+
+// Drop n randomly picked connections
+func (n *Node) dropOutConnections(count uint) {
+	for i := uint(0); i < count; i++ {
+		length := int64(len(n.Outs))
+		if length == 0 {
+			return
+		}
+
+		// We cant rely on go map order, so we generate an index and then
+		// iterate over the map
+		bigIndex, err := rand.Int(rand.Reader, big.NewInt(length))
+		if err != nil {
+			log.Println("dropOutConnections:", err)
+			return
+		}
+		index := bigIndex.Uint64()
+
+		foo := uint64(0)
+		for k, conn := range n.Outs {
+			if foo == index {
+				conn.Close()
+				delete(n.Outs, k)
+				break
+			}
+			foo++
+		}
+	}
+}
+
+func (n *Node) dropOutConnection(address string) {
+	conn, ok := n.Outs[address]
+	if !ok {
+		log.Println("Dropping unknown connection:", address)
+		return
+	}
+
+	conn.Close()
+	delete(n.Outs, address)
 }
