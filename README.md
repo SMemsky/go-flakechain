@@ -15,10 +15,9 @@ Building for 32-bit platforms might not succeed.
 Base stuff
 ```
 go get -u github.com/SMemsky/go-flakechain/cmd/daemon
-go get -u github.com/SMemsky/go-flakechain/cmd/wallet
 ```
 
-To run
+To run (1.10 won't work, sorry :) )
 ```
 go run github.com/SMemsky/go-flakechain/cmd/daemon
 go run github.com/SMemsky/go-flakechain/cmd/wallet
@@ -26,7 +25,13 @@ go run github.com/SMemsky/go-flakechain/cmd/wallet
 
 Should also work on windows. Just remember to install latest Go and Git.
 
-# Fork?
+# Fork?```
+25
+Or
+26
+``
+27
+```
 
 Just a quick note here. It's a golang and all import paths depend on this repository.
 To make a fork (for pull request?) do following
