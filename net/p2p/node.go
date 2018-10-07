@@ -4,7 +4,6 @@ package p2p
 import (
 	"crypto/rand"
 	"encoding/binary"
-	"fmt"
 	"log"
 	"math/big"
 	"sync"
@@ -63,9 +62,7 @@ type Node struct {
 	Ins  map[string]levin.Conn
 	Outs map[string]levin.Conn
 
-	whitePeerlist  map[string]PeerListEntry
-	grayPeerlist   map[string]PeerListEntry
-	anchorPeerlist map[string]AnchorPeerListEntry
+	peers *peerlist
 
 	port   uint16
 	peerId uint64
@@ -81,9 +78,7 @@ func StartNode(port uint16) (*Node, error) {
 		Ins:  make(map[string]levin.Conn),
 		Outs: make(map[string]levin.Conn),
 
-		whitePeerlist:  make(map[string]PeerListEntry),
-		grayPeerlist:   make(map[string]PeerListEntry),
-		anchorPeerlist: make(map[string]AnchorPeerListEntry),
+		peers: NewPeerlist(),
 
 		port:   port,
 		peerId: 0,
@@ -133,7 +128,7 @@ func (n *Node) makeConnections() {
 
 	oldConnCount := len(n.Outs)
 
-	if len(n.whitePeerlist) == 0 && len(trustedSeedNodes) != 0 {
+	if n.peers.WhiteCount() == 0 && len(trustedSeedNodes) != 0 {
 		n.connectToSeed()
 	}
 
@@ -156,6 +151,7 @@ func (n *Node) makeConnections() {
 // Chose a random trusted seed and try to take its peerlist
 func (n *Node) connectToSeed() {
 	if len(trustedSeedNodes) == 0 {
+		log.Println("Error: No trusted seed nodes!")
 		return
 	}
 
@@ -169,20 +165,78 @@ func (n *Node) connectToSeed() {
 	n.connectAndHandshakeWithPeer(trustedSeedNodes[index.Int64()], true)
 }
 
-func (n *Node) makeExpectedConnections(kind peerType, count uint) {
-	log.Println("Trying to meet requirement", count, "for", kind)
+func (n *Node) makeExpectedConnections(kind peerType, targetCount uint) {
+	log.Println("Trying to meet requirement", targetCount, "for", kind)
+
+	connCount := uint(len(n.Outs))
+connLoop:
+	for connCount < targetCount {
+		switch kind {
+		case anchorPeer:
+			break connLoop
+		case whitePeer:
+			break connLoop
+		case grayPeer:
+			log.Println("Trying gray peer")
+			if !n.makeConnectionFromGrayPeerlist() {
+				break connLoop
+			}
+		}
+
+		connCount = uint(len(n.Outs))
+	}
 }
 
-func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakePeerList bool) {
+func (n *Node) makeConnectionFromGrayPeerlist() bool {
+	peerCount := n.peers.GrayCount()
+	if peerCount == 0 {
+		return false
+	}
+
+	triedPeers := make(map[string]struct{})
+	tryConnect := 0
+	tryChoose := 0
+	for tryChoose < 3*min(peerCount, 20) && tryConnect < 10 {
+		tryChoose++
+
+		peer, ok := n.peers.GetRandomGrayPeer()
+		if !ok {
+			continue
+		}
+		if _, present := n.Outs[peer.Address.String()]; present {
+			continue
+		}
+		if _, present := triedPeers[peer.Address.String()]; present {
+			continue
+		}
+
+		tryConnect++
+		triedPeers[peer.Address.String()] = struct{}{}
+
+		// TODO: Check if host not allowed or failed recently
+
+		// if !connectAndHandshakeWithPeer(peer.Address.String(), false) {
+		// 	continue
+		// }
+
+		log.Println("Trying to connect to GRAY peer:", peer.Address.String())
+		// Temporarily return false. Should return true, 'cause connection OK
+		return false
+	}
+
+	return false
+}
+
+func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakePeerList bool) bool {
 	if len(n.Outs) == maxOutConnections {
-		return
+		return false
 	} else if len(n.Outs) > maxOutConnections {
 		n.dropOutConnections(1)
-		return
+		return false
 	}
 	if _, present := n.Outs[address]; present {
 		// prevent duplicate connection to the same node
-		return
+		return false
 	}
 
 	log.Println("Attempting to connect to", address)
@@ -190,7 +244,7 @@ func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakePeerList bool
 	out, err := levin.Dial(address)
 	if err != nil {
 		log.Println("Unable to connect:", address, err)
-		return
+		return false
 	}
 	n.Outs[address] = out
 	if onlyTakePeerList {
@@ -203,22 +257,17 @@ func (n *Node) connectAndHandshakeWithPeer(address string, onlyTakePeerList bool
 			defer n.dropOutConnection(address)
 		}
 		log.Printf("Failed with error: %s\n", err)
-		return
+		return false
 	}
 
 	// log.Printf("%+v\n", response)
 	log.Println(address, "answered with", len(response.Peers), "gray peers")
 	log.Println(address, "has height", response.SyncData.CurrentHeight, "and difficulty", response.SyncData.CumulativeDifficulty)
 
-	// for i := 0; i < len(response.Peers); i++ {
-	// 	ip := response.Peers[i].Address.Address.Ip
-	// 	foo := net.IPv4(byte(ip>>24), byte(ip>>16), byte(ip>>8), byte(ip))
-	// 	log.Println(foo.String())
-	// 	log.Println(response.Peers[i].Address.String())
-	// }
+	n.peers.MergePeerlist(response.Peers, int64(response.NodeData.LocalTime))
+	log.Println("Gray size:", n.peers.GrayCount())
 
-	n.addNewPeers(response.Peers, int64(response.NodeData.LocalTime))
-	log.Println("Gray size:", len(n.grayPeerlist))
+	return true
 }
 
 func (n *Node) handshakeWithPeer(peer levin.Conn) (*HandshakeResponse, error) {
@@ -271,48 +320,6 @@ func (n *Node) dropOutConnection(address string) {
 
 	conn.Close()
 	delete(n.Outs, address)
-}
-
-func fixTimeDelta(peers []PeerListEntry, localTime int64) (int64, error) {
-	now := time.Now().Unix()
-	delta := now - localTime
-
-	for i := 0; i < len(peers); i++ {
-		if peers[i].LastSeen > localTime {
-			return 0, fmt.Errorf("Peerlist entry from future: local:%d, peer:%d", localTime, peers[i].LastSeen)
-		}
-		peers[i].LastSeen += delta
-	}
-	return delta, nil
-}
-
-func (n *Node) addNewPeers(peers []PeerListEntry, localTime int64) {
-	newPeers := make([]PeerListEntry, len(peers))
-	copy(newPeers, peers)
-	delta, err := fixTimeDelta(newPeers, localTime)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	log.Println("Peer Delta =", delta)
-
-	n.addGrayPeers(newPeers)
-}
-
-func (n *Node) addGrayPeers(peers []PeerListEntry) {
-	for i := 0; i < len(peers); i++ {
-		str := peers[i].Address.String()
-		if _, present := n.whitePeerlist[str]; present {
-			log.Println("Skipping white", str)
-			continue
-		}
-		if !isIpAllowed(peers[i].Address.IpString()) {
-			fmt.Println("Ip", str, "disallowed")
-			continue
-		}
-		// Update if already in graylist
-		n.grayPeerlist[str] = peers[i]
-	}
 }
 
 func (n *Node) gatherNodeData() BasicNodeData {
