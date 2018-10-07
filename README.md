@@ -25,13 +25,7 @@ go run github.com/SMemsky/go-flakechain/cmd/wallet
 
 Should also work on windows. Just remember to install latest Go and Git.
 
-# Fork?```
-25
-Or
-26
-``
-27
-```
+# Fork?
 
 Just a quick note here. It's a golang and all import paths depend on this repository.
 To make a fork (for pull request?) do following
