@@ -32,3 +32,7 @@ func randUint64() (result uint64) {
 	binary.Read(rand.Reader, binary.LittleEndian, &result)
 	return
 }
+
+func formatTimeSince(unix int64) string {
+    return time.Since(time.Unix(unix, 0)).Round(time.Second).String()
+}

@@ -215,12 +215,12 @@ func (n *Node) makeConnectionFromGrayPeerlist() bool {
 
 		// TODO: Check if host not allowed or failed recently
 
+		log.Println("Trying to connect to GRAY peer:", peer.Address.String())
+		log.Println("Last seen:", formatTimeSince(peer.LastSeen), "ago")
 		// if !connectAndHandshakeWithPeer(peer.Address.String(), false) {
 		// 	continue
 		// }
 
-		log.Println("Trying to connect to GRAY peer:", peer.Address.String())
-		// Temporarily return false. Should return true, 'cause connection OK
 		return false
 	}
 
