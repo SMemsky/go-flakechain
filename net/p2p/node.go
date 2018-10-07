@@ -59,6 +59,7 @@ var (
 
 type Node struct {
 	// TODO: levin listener
+
 	Ins  map[string]levin.Conn
 	Outs map[string]levin.Conn
 
@@ -300,15 +301,16 @@ func (n *Node) addNewPeers(peers []PeerListEntry, localTime int64) {
 
 func (n *Node) addGrayPeers(peers []PeerListEntry) {
 	for i := 0; i < len(peers); i++ {
-		str := peers[i].Address.IpString()
+		str := peers[i].Address.String()
 		if _, present := n.whitePeerlist[str]; present {
 			log.Println("Skipping white", str)
 			continue
 		}
-		if _, present := n.grayPeerlist[str]; present {
-			log.Println("Skipping gray", str)
+		if !isIpAllowed(peers[i].Address.IpString()) {
+			fmt.Println("Ip", str, "disallowed")
 			continue
 		}
+		// Update if already in graylist
 		n.grayPeerlist[str] = peers[i]
 	}
 }
